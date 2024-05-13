@@ -15,8 +15,8 @@ SLACK_BOT_MEMBER_ID = os.environ.get("SLACK_BOT_MEMBER_ID")
 
 CHATGPT_SETTINGS = os.environ.get("CHATGPT_SETTINGS")
 
+TEXT_THINKING = "Thinking..."
 STREAM_INTERVAL = 3  # 3 秒間隔でメッセージを更新
-STREAM_TEXT_THINKING = "Thinking..."
 STREAM_TEXT_MORE = "•"
 
 logging.getLogger(__name__).setLevel(LOG_LEVEL)
@@ -74,13 +74,14 @@ def handle_app_mentions(event, say: Say, logger: logging.Logger):
     # logger.debug(f"Using ChatGPT: {CHATGPT_SETTINGS}")
     logger.debug(json.dumps(inputs))
 
+    message = say(channel=channel_id, thread_ts=event_ts, text=TEXT_THINKING)
+
     # ask
     settings = json.loads(CHATGPT_SETTINGS)
     client = OpenAI(api_key=settings["apiKey"])
     started = time.time()
     if settings.get("stream", False):
         # streaming mode
-        message = say(channel=channel_id, thread_ts=event_ts, text=STREAM_TEXT_THINKING)
 
         response = client.chat.completions.create(
             model=settings["model"],
@@ -111,11 +112,6 @@ def handle_app_mentions(event, say: Say, logger: logging.Logger):
         if usage:
             result += f"\nprompt tokens: {usage.prompt_tokens}"
             result += f"\ncompletion tokens: {usage.completion_tokens}"
-        app.client.chat_update(
-            channel=channel_id,
-            ts=message["ts"],
-            text=result,
-        )
     else:
         # not streaming mode
         response = client.chat.completions.create(
@@ -128,7 +124,12 @@ def handle_app_mentions(event, say: Say, logger: logging.Logger):
         if response.usage:
             result += f"\nprompt tokens: {response.usage.prompt_tokens}"
             result += f"\ncompletion tokens: {response.usage.completion_tokens}"
-        say(channel=channel_id, thread_ts=event_ts, text=result)
+
+    app.client.chat_update(
+        channel=channel_id,
+        ts=message["ts"],
+        text=result,
+    )
 
 
 app.event("app_mention")(
