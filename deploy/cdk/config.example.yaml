@@ -26,3 +26,5 @@ chatGpt:
   apiKey: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
   # ChatGPT model
   model: gpt-4-turbo-preview
+  # Streaming mode
+  stream: false

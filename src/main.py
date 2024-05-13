@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 
 from openai import OpenAI
 from slack_bolt import App, Ack, Say
@@ -13,6 +14,10 @@ SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
 SLACK_BOT_MEMBER_ID = os.environ.get("SLACK_BOT_MEMBER_ID")
 
 CHATGPT_SETTINGS = os.environ.get("CHATGPT_SETTINGS")
+
+STREAM_INTERVAL = 3  # 3 秒間隔でメッセージを更新
+STREAM_TEXT_THINKING = "Thinking..."
+STREAM_TEXT_MORE = "•"
 
 logging.getLogger(__name__).setLevel(LOG_LEVEL)
 
@@ -58,7 +63,7 @@ def handle_app_mentions(event, say: Say, logger: logging.Logger):
     thread_messages = get_thread_messages(channel_id, get_thread_ts(channel_id, event_ts), 30)
     logger.debug(json.dumps(thread_messages, ensure_ascii=False))
 
-    # ask
+    # build inputs
     inputs: list[dict] = []
     for m in thread_messages:
         if m["user"] == SLACK_BOT_MEMBER_ID:
@@ -69,16 +74,61 @@ def handle_app_mentions(event, say: Say, logger: logging.Logger):
     # logger.debug(f"Using ChatGPT: {CHATGPT_SETTINGS}")
     logger.debug(json.dumps(inputs))
 
+    # ask
     settings = json.loads(CHATGPT_SETTINGS)
     client = OpenAI(api_key=settings["apiKey"])
-    response = client.chat.completions.create(
-        model=settings["model"],
-        messages=inputs,
-    )
-    result = response.choices[0].message.content
+    started = time.time()
+    if settings.get("stream", False):
+        # streaming mode
+        message = say(channel=channel_id, thread_ts=event_ts, text=STREAM_TEXT_THINKING)
 
-    # reply
-    say(channel=channel_id, thread_ts=event_ts, text=result)
+        response = client.chat.completions.create(
+            model=settings["model"],
+            messages=inputs,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+        result = ""
+        checkpoint = time.time()
+        usage = None
+        for chunk in response:
+            if len(chunk.choices) > 0:
+                content = chunk.choices[0].delta.content
+                if content:
+                    result += content
+                    elapsed = time.time() - checkpoint
+                    if elapsed > STREAM_INTERVAL:
+                        app.client.chat_update(
+                            channel=channel_id,
+                            ts=message["ts"],
+                            text=result + STREAM_TEXT_MORE,
+                        )
+                        checkpoint = time.time()
+            if chunk.usage:
+                usage = chunk.usage
+        total = time.time() - started
+        result += f"\n\nelapsed: {total:.2f} seconds"
+        if usage:
+            result += f"\nprompt tokens: {usage.prompt_tokens}"
+            result += f"\ncompletion tokens: {usage.completion_tokens}"
+        app.client.chat_update(
+            channel=channel_id,
+            ts=message["ts"],
+            text=result,
+        )
+    else:
+        # not streaming mode
+        response = client.chat.completions.create(
+            model=settings["model"],
+            messages=inputs,
+        )
+        result = response.choices[0].message.content
+        total = time.time() - started
+        result += f"\n\nelapsed: {total:.2f} seconds"
+        if response.usage:
+            result += f"\nprompt tokens: {response.usage.prompt_tokens}"
+            result += f"\ncompletion tokens: {response.usage.completion_tokens}"
+        say(channel=channel_id, thread_ts=event_ts, text=result)
 
 
 app.event("app_mention")(

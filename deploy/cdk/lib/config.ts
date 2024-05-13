@@ -17,6 +17,7 @@ export type Config = {
     readonly chatGpt: {
         readonly apiKey: string;
         readonly model: string;
+        readonly stream?: boolean;
     };
 }
 

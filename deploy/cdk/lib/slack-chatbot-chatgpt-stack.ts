@@ -33,7 +33,7 @@ export class SlackChatbotChatgptStack extends cdk.Stack {
       index: "main.py",
       logRetention: logs.RetentionDays.ONE_WEEK,
       runtime: lambda.Runtime.PYTHON_3_12,
-      timeout: cdk.Duration.minutes(1),
+      timeout: cdk.Duration.minutes(5),
     });
     // for Lazy listener
     const invokeFunctionPolicy = new iam.Policy(this, "InvokeFunctionPolicy", {
